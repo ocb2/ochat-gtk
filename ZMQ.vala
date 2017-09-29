@@ -17,11 +17,6 @@ void *zmq() {
 	// vala copies these, so you have to index items not reference eg poll_sub
 	ZMQ.POLL.PollItem[] items = {poll_sub, poll_req, poll_pair};
 
-	// initial state sync
-	irc_ctx = zmq_sync(sock_req);
-//	ZMQ.Msg().send(sock_pair, 0);
-//	ZMQ.Msg().recv(sock_pair, 0);
-
 	while (true) {
 		var n = ZMQ.POLL.poll(items, items.length, -1);
 		assert(n >= 0);
@@ -33,31 +28,39 @@ void *zmq() {
 		    msg.recv(sock_sub, 0);
 
 			var parser = new Json.Parser();
-//			stdout.printf("recv: %s\n", (string)msg.data);
 			try {
 				parser.load_from_data((string)msg.data, (ssize_t)msg.size());
 			} catch (GLib.Error e) {
 				stderr.printf("invalid json in zmq()\n");
 				exit(-1);
 			}
-			var root = parser.get_root().get_object();
-			if (root.get_string_member("operand") == "sync") {
-				var new_ctx = new Context.from_json(root);
-				queue.push(new Right<Msg, Context>(new_ctx));
-				irc_ctx = new_ctx;
+			var root = parser.get_root();
+			if (root == null) {
+				stderr.printf("Malformed response: ");
+				stderr.write(msg.data, msg.size());
+				stderr.printf("\n");
+				continue;
 			} else {
-				var ircmsg = new Msg.from_json(root);
-				queue.push(new Left<Msg, Context>(ircmsg));
+				try {
+					if (JSON.get_string(Json.Path.query("$.operand", root)) == "sync") {
+						var new_ctx = new Context.from_json(root);
+						queue.push(new Right<Msg, Context>(new_ctx));
+						irc_ctx = new_ctx;
+					} else {
+						try {
+							queue.push(new Left<Msg, Context>(new Msg.from_json(root)));
+						} catch (JSON.Error.MALFORMED e) {
+							stderr.printf("Malformed JSON: %s\n", Json.to_string(root, true));
+							continue;
+						}
+					}
+				} catch {
+					stderr.printf("Malformed JSON: %s\n", Json.to_string(root, true));
+					continue;
+				}
 			}
 		}
-/*
-// REQ
-if (items[1].revents > 0) {
-stdout.printf("in req loop\n");
-var msg = new ZMQ.Msg();
-msg.recv(sock_req, 0);
-}
-*/
+
 		// PAIR
 		// just ferries messages between threads basically
 		if (items[2].revents > 0) {
@@ -92,6 +95,15 @@ Context zmq_sync(ZMQ.Socket sock_req) {
 		stderr.printf("invalid json in zmq()\n");
 		exit(-1);
 	}
-	var ctxroot = parser.get_root().get_object();
-	return new Context.from_json(ctxroot);
+	var ctxroot = parser.get_root();
+	try {
+		return new Context.from_json(ctxroot);
+	} catch {
+		stderr.printf("Malformed JSON in sync(): ");
+		stderr.write(msg.data, msg.size());
+		stderr.printf("\n");
+		exit(-1);
+		// return checker doesn't know about exit()
+		return (Context)null;
+	}
 }

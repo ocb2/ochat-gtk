@@ -2,25 +2,33 @@ using Sqlite;
 
 public class Prefix : Object {
 	public bool discriminant;
+
 	public string server;
+
 	public string nick;
 	public string ident;
 	public string host;
 
-	public Prefix.from_json(Json.Object root) {
-		Json.Object prefix;
+	// if it has a prefix, then it should have either a server, or a nick/ident/host pair, if not, it's malformed
+	// TODO: allow messages without prefixes
+	public Prefix.from_json(Json.Node node) throws JSON.Error {
 		try {
-			prefix = root.get_object_member("prefix");
-
+			this.server = JSON.get_string(Json.Path.query("$.prefix.server", node));
 			this.discriminant = false;
-			this.server = prefix.get_string_member("server");
-			if (this.server == null) { throw new Error(0, 0, ""); }
-			stdout.printf("in prefix constructor, in false discriminant branch, this.server=%p\n", this.server);
-		} catch (Error e) {
-			this.discriminant = true;
-			this.nick = prefix.get_string_member("nick");
-			this.ident = prefix.get_string_member("ident");
-			this.host = prefix.get_string_member("host");
+		} catch (Json.PathError e) {
+			try {
+				this.nick = JSON.get_string(Json.Path.query("$.prefix.nick", node));
+				this.ident = JSON.get_string(Json.Path.query("$.prefix.ident", node));
+				this.host = JSON.get_string(Json.Path.query("$.prefix.host", node));
+				this.discriminant = true;
+
+			} catch (Json.PathError e) {
+				throw new JSON.Error.NO_SUCH_KEY("");
+			} catch {
+				throw new JSON.Error.MALFORMED("");
+			}
+		} catch {
+			throw new JSON.Error.MALFORMED("");
 		}
 	}
 
@@ -54,20 +62,29 @@ public class Msg : Object {
 		this.parameters = parameters;
 	}
 
-	public Msg.from_json(Json.Object root) {
+	public Msg.from_json(Json.Node node) throws JSON.Error {
 		try {
-			var p = new Prefix.from_json(root);
-			this.prefix = new Some<Prefix>(p);
+			this.prefix = new Some<Prefix>(new Prefix.from_json(node));
+		} catch (JSON.Error.NO_SUCH_KEY e) {
+			this.prefix = new None<Prefix>();
+		} catch (JSON.Error.MALFORMED e) {
+			throw new JSON.Error.MALFORMED("prefix");
+		}
 
-			this.command = root.get_string_member("command");
+		try {
+			this.command = JSON.get_string(Json.Path.query("$.command", node));
+		} catch {
+			throw new JSON.Error.MALFORMED("command");
+		}
 
-			var ps = root.get_array_member("params");
+		try {
+			var ps = JSON.get_array(Json.Path.query("$.params", node));
 			this.parameters = new string[ps.get_length()];
 			for (int i = 0; i < ps.get_length(); i++) {
 				parameters[i] = ps.get_string_element(i);
 			}
-		} catch (Error e) {
-			this.prefix = new None<Prefix>();
+		} catch {
+			throw new JSON.Error.MALFORMED("parameters");
 		}
 	}
 
@@ -109,191 +126,3 @@ public class Msg : Object {
 		return new Some<string>(s.dup());
 	}
 }
-/*
-public interface Msg : Object {
-	public abstract string get_recipient();
-	public abstract string to_string();
-	public static string serialize() {
-		return (string)null;
-	}
-	public static Msg from_json(Json.Object root) {
-		Msg r;
-
-		switch (root.get_string_member("command")) {
-		case "JOIN": {
-		    r = new JOIN.from_json(root);
-			break;
-		}
-		case "PART": {
-		    r = new PART.from_json(root);
-			break;
-		}
-		case "PRIVMSG": {
-		    r = new PRIVMSG.from_json(root);
-			break;
-		}
-		default: {
-			r = null;
-			break;
-		}
-		};
-
-		return r;
-	}
-}
-
-public class User : Object {
-	public string nick;
-	public string ident;
-	public string host;
-
-	public User(string nick, string i, string h) {
-		this.nick = nick;
-		this.ident = i;
-		this.host = h;
-	}
-
-	public User.from_json(Json.Object root) {
-		var prefix = root.get_object_member("prefix");
-		this.nick = prefix.get_string_member("nick");
-	    this.ident = prefix.get_string_member("ident");
-	    this.host = prefix.get_string_member("host");
-	}
-
-	public string to_string() {
-		return this.nick +
-		"!" +
-		this.ident +
-		"@" +
-		this.host;
-	}
-}
-
-public class JOIN : Msg, Object {
-	public User user;
-	public string channel;
-    public JOIN(User u, string c) {
-		user = u;
-		channel = c;
-	}
-	public string get_recipient() {
-		return channel;
-	}
-	public string to_string() {
-		return "join: " +
-		user.to_string() +
-		" to " +
-		channel +
-		"\n";
-	}
-
-	public static string serialize(string channel) {
-		var generator = new Json.Generator();
-		var root = new Json.Node(Json.NodeType.OBJECT);
-		var object = new Json.Object();
-		size_t length;
-		root.set_object(object);
-		generator.set_root(root);
-		object.set_string_member("operand", "JOIN");
-		object.set_string_member("channel", channel);
-		return generator.to_data(out length);
-	}
-
-	public JOIN.from_json(Json.Object root) {
-		this.user = new User.from_json(root);
-		this.channel = root.get_array_member("params").get_string_element(0);
-	}
-}
-public class PART : Msg, Object {
-	public User user;
-	public string channel;
-	public string reason;
-	public PART(User u, string c, string r) {
-		user = u;
-		channel = c;
-		reason = r;
-	}
-	public string get_recipient() {
-		return channel;
-	}
-	public string to_string() {
-		return "part: " +
-		user.to_string() +
-		" from " +
-		channel +
-		": " +
-		reason +
-		"\n";
-	}
-
-	public static string serialize(string channel, string reason) {
-		size_t length;
-		var generator = new Json.Generator();
-		var root = new Json.Node(Json.NodeType.OBJECT);
-		var object = new Json.Object();
-		root.set_object(object);
-		generator.set_root(root);
-		object.set_string_member("operand", "PART");
-		object.set_string_member("channel", channel);
-		object.set_string_member("reason", reason);
-		return generator.to_data(out length);
-	}
-
-	public PART.from_json(Json.Object root) {
-		this.user = new User.from_json(root);
-		this.channel = root.get_array_member("params").get_string_element(0);
-		this.reason = root.get_array_member("params").get_string_element(1);
-	}
-}
-
-// do we even need this here?
-public class PING : Object {
-	public string server;
-    public PING(string s) {
-		server = s;
-	}
-}
-
-public class PRIVMSG : Msg, Object {
-	public User user;
-	public string recipient;
-	public string body;
-    public PRIVMSG(User u, string r, string b) {
-		this.user = u;
-	    this.recipient = r;
-		this.body = b;
-	}
-	public string get_recipient() {
-		if (this.recipient == irc_ctx.nick) {
-			return this.user.nick;
-		} else {
-			return this.recipient;
-		}
-	}
-	public string to_string() {
-		return
-		user.to_string() +
-		": " +
-		body +
-		"\n";
-	}
-
-	public static string serialize(string recipient, string body) {
-		size_t length;
-		var generator = new Json.Generator();
-		var root = new Json.Node(Json.NodeType.OBJECT);
-		var object = new Json.Object();
-		root.set_object(object);
-		generator.set_root(root);
-		object.set_string_member("operand", "PRIVMSG");
-		object.set_string_member("recipient", recipient);
-		object.set_string_member("body", body);
-		return generator.to_data(out length);
-	}
-
-	public PRIVMSG.from_json(Json.Object root) {
-		this.user = new User.from_json(root);
-		this.recipient = root.get_array_member("params").get_string_element(0);
-		this.body = root.get_array_member("params").get_string_element(1);
-	}
-}*/
