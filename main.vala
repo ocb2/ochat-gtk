@@ -37,13 +37,17 @@ public class Context : Object {
 
 	public List<string> channels;
 
-	public Context.from_json(Json.Object root) {
-		this.nick = root.get_string_member("nick");
-	    this.ident = root.get_string_member("ident");
-	    this.real = root.get_string_member("realname");
-
-		foreach (Json.Node n in root.get_array_member("channels").get_elements()) {
-			channels.append(n.get_string());
+	public Context.from_json(Json.Node node) throws JSON.Error {
+		try {
+			this.nick = JSON.get_string(Json.Path.query("$.nick", node));
+			this.ident = JSON.get_string(Json.Path.query("$.ident", node));
+			this.real = JSON.get_string(Json.Path.query("$.real", node));
+			
+			foreach (Json.Node n in JSON.get_array(Json.Path.query("$.channels", node)).get_elements()) {
+				channels.append(n.get_string());
+			}
+		} catch {
+			exit(-1);
 		}
 	}
 }
