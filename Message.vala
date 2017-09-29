@@ -13,22 +13,19 @@ public class Prefix : Object {
 	// TODO: allow messages without prefixes
 	public Prefix.from_json(Json.Node node) throws JSON.Error {
 		try {
-			this.server = JSON.get_string(Json.Path.query("$.prefix.server", node));
+			this.server = JSON.query_string("$.prefix.server", node);
 			this.discriminant = false;
-		} catch (Json.PathError e) {
+		} catch {
 			try {
-				this.nick = JSON.get_string(Json.Path.query("$.prefix.nick", node));
-				this.ident = JSON.get_string(Json.Path.query("$.prefix.ident", node));
-				this.host = JSON.get_string(Json.Path.query("$.prefix.host", node));
+				this.nick = JSON.query_string("$.prefix.nick", node);
+				this.ident = JSON.query_string("$.prefix.ident", node);
+				this.host = JSON.query_string("$.prefix.host", node);
 				this.discriminant = true;
-
-			} catch (Json.PathError e) {
+			} catch (JSON.Error.EMPTY e) {
 				throw new JSON.Error.NO_SUCH_KEY("");
 			} catch {
 				throw new JSON.Error.MALFORMED("");
 			}
-		} catch {
-			throw new JSON.Error.MALFORMED("");
 		}
 	}
 
@@ -72,13 +69,13 @@ public class Msg : Object {
 		}
 
 		try {
-			this.command = JSON.get_string(Json.Path.query("$.command", node));
+			this.command = JSON.query_string("$.command", node);
 		} catch {
 			throw new JSON.Error.MALFORMED("command");
 		}
 
 		try {
-			var ps = JSON.get_array(Json.Path.query("$.params", node));
+			var ps = JSON.get_array(JSON.get_array(Json.Path.query("$.params.*", node)).get_element(0));
 			this.parameters = new string[ps.get_length()];
 			for (int i = 0; i < ps.get_length(); i++) {
 				parameters[i] = ps.get_string_element(i);

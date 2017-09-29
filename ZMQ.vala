@@ -42,21 +42,18 @@ void *zmq() {
 				continue;
 			} else {
 				try {
-					if (JSON.get_string(Json.Path.query("$.operand", root)) == "sync") {
+					if (JSON.query_string("$.operand", root) == "sync") {
 						var new_ctx = new Context.from_json(root);
 						queue.push(new Right<Msg, Context>(new_ctx));
 						irc_ctx = new_ctx;
-					} else {
-						try {
-							queue.push(new Left<Msg, Context>(new Msg.from_json(root)));
-						} catch (JSON.Error.MALFORMED e) {
-							stderr.printf("Malformed JSON: %s\n", Json.to_string(root, true));
-							continue;
-						}
 					}
 				} catch {
-					stderr.printf("Malformed JSON: %s\n", Json.to_string(root, true));
-					continue;
+					try {
+						queue.push(new Left<Msg, Context>(new Msg.from_json(root)));
+					} catch (JSON.Error.MALFORMED e) {
+						stderr.printf("Malformed JSON in message: %s\n", Json.to_string(root, true));
+						continue;
+					}
 				}
 			}
 		}

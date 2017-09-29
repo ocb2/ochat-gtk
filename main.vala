@@ -1,11 +1,8 @@
-// compile: valac -g --save-temps --thread --Xcc=-lzmq --pkg gtk+-3.0 --pkg json-glib-1.0 rschatc.vala zmq.vapi  && ./rschatc
 using Gtk;
 using ZMQ;
 
 extern void exit(int exit_code);
 
-//TextBuffer buffer;
-//TextView text;
 ZMQ.Context ctx;
 Context irc_ctx;
 HashTable<string, IRCWindow> windows;
@@ -39,15 +36,15 @@ public class Context : Object {
 
 	public Context.from_json(Json.Node node) throws JSON.Error {
 		try {
-			this.nick = JSON.get_string(Json.Path.query("$.nick", node));
-			this.ident = JSON.get_string(Json.Path.query("$.ident", node));
-			this.real = JSON.get_string(Json.Path.query("$.real", node));
+			this.nick = JSON.query_string("$.nick", node);
+			this.ident = JSON.query_string("$.ident", node);
+			this.real = JSON.query_string("$.realname", node);
 			
-			foreach (Json.Node n in JSON.get_array(Json.Path.query("$.channels", node)).get_elements()) {
-				channels.append(n.get_string());
+			foreach (Json.Node n in JSON.get_array(Json.Path.query("$.channels.*", node)).get_elements()) {
+				this.channels.append(JSON.get_array(n).get_string_element(0));
 			}
 		} catch {
-			exit(-1);
+		    throw new JSON.Error.MALFORMED("context");
 		}
 	}
 }
@@ -95,7 +92,6 @@ public class IRCWindow : Gtk.Bin {
 					this.entry.set_text("");
 					return;
 				} else {
-//					var s = PRIVMSG.serialize(this.recipient, t);
 					var s = (new Msg(new None<Prefix>(),
 									 "PRIVMSG",
 					{this.recipient,t})).serialize();
@@ -129,18 +125,6 @@ public class IRCWindow : Gtk.Bin {
 	}
 
 	public void interpret(Msg m) {
-		if (m.prefix is Some<Prefix>) {
-			var prefix_ = (m.prefix as Some<Prefix>).data;
-			if (prefix_.discriminant) {
-				stdout.printf("msg: prefix: %s %s %s\n", prefix_.nick, prefix_.ident, prefix_.host);
-			} else {
-				stdout.printf("msg: prefix: server: %s\n", prefix_.server);
-			}
-		}
-		stdout.printf("msg: command=%s\n", m.command);
-		foreach (string q in m.parameters) {
-			stdout.printf("msg: param: %s\n", q);
-		}
 		string s;
 		switch (m.command) {
 		case "JOIN": {
@@ -212,12 +196,8 @@ void main (string[] args) {
 
 	var sock_pair = ZMQ.Socket.create(ctx, ZMQ.SocketType.PAIR);
 	sock_pair.bind("inproc://msg");
-	stdout.printf("before sync call\n");
-	irc_ctx = zmq_sync(sock_pair);
-	stdout.printf("past sync call, %s\n", irc_ctx.channels.nth_data(0));
 
-	//ZMQ.Msg().recv(sock_pair, 0);
-    
+	irc_ctx = zmq_sync(sock_pair);
 
 	store.append(out tree_root, null);
 	store.set(tree_root, 0, "localhost", -1);
