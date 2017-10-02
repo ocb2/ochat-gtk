@@ -33,7 +33,6 @@ public class Prefix : Object {
 		var generator = new Json.Generator();
 		var root = new Json.Node(Json.NodeType.OBJECT);
 		var object = new Json.Object();
-		size_t length;
 		root.set_object(object);
 		generator.set_root(root);
 		if (discriminant) {

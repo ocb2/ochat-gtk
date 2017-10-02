@@ -80,7 +80,6 @@ public class IRCWindow : Gtk.Bin {
 				if (t[0] == '/') {
 					// TODO: slightly more robust parsing logic...
 					if (t[1:5] == "join") {
-//						var s = JOIN.serialize(t[6:t.length]);
 						var s = (new Msg(new None<Prefix>(),
 										 "JOIN",
                                          {t[6:t.length]})).serialize();
@@ -164,6 +163,7 @@ public class IRCWindow : Gtk.Bin {
 	}
 }
 
+// TODO: organize this into sections
 void main (string[] args) {
     ctx = new ZMQ.Context(1);
 	new Thread<void*>(null, zmq);
@@ -182,22 +182,49 @@ void main (string[] args) {
 	tree.insert_column_with_attributes(-1, null, new CellRendererText(), "text", 0, null);
 	tree.set_headers_visible(false);
 
-
     var window = new Window();
-    window.title = "IRC";
+    window.title = "ochat";
     window.border_width = 10;
     window.window_position = WindowPosition.CENTER;
     window.set_default_size(350, 70);
     window.destroy.connect(Gtk.main_quit);
 
+	// message bar
+	var box_top = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+	var menu_bar = new Gtk.MenuBar();
+	box_top.pack_start(menu_bar, false, false, 0);
+	window.add(box_top);
+
+	Gtk.MenuItem menu_item_file = new Gtk.MenuItem.with_mnemonic("_File");
+	menu_bar.add(menu_item_file);
+
+	Gtk.Menu menu_file = new Gtk.Menu();
+	menu_item_file.set_submenu(menu_file);
+
+	Gtk.MenuItem menu_item_file_exit = new Gtk.MenuItem.with_mnemonic("E_xit");
+	menu_file.add(menu_item_file_exit);
+	menu_item_file_exit.activate.connect(() => { Gtk.main_quit(); });
+
+	Gtk.MenuItem menu_item_server = new Gtk.MenuItem.with_mnemonic("_Server");
+	menu_bar.add(menu_item_server);
+
+	Gtk.Menu menu_server = new Gtk.Menu();
+	menu_item_server.set_submenu(menu_server);
+	var sock_pair = ZMQ.Socket.create(ctx, ZMQ.SocketType.PAIR);
+	sock_pair.bind("inproc://msg");
+
+	Gtk.MenuItem menu_item_server_list = new Gtk.MenuItem.with_mnemonic("_List");
+	menu_server.add(menu_item_server_list);
+	menu_item_server_list.activate.connect(() => {
+			var dialog = new ServerListDialog(sock_pair);
+			dialog.show_all();
+		});
+
 	pane_h = new Gtk.Paned(Gtk.Orientation.HORIZONTAL);
 	pane_h.set_wide_handle(true);
 	pane_h.add(tree);
 
-	var sock_pair = ZMQ.Socket.create(ctx, ZMQ.SocketType.PAIR);
-	sock_pair.bind("inproc://msg");
-
-	irc_ctx = zmq_sync(sock_pair);
+	irc_ctx = protocol.sync(sock_pair);
 
 	store.append(out tree_root, null);
 	store.set(tree_root, 0, "localhost", -1);
@@ -224,10 +251,10 @@ void main (string[] args) {
 				last = next;
 			}
 		});
-//	ZMQ.Msg().send(sock_pair, 0);
-    window.add(pane_h);
+
 	GLib.Idle.add_full(GLib.Priority.DEFAULT_IDLE, () => {
 			var n = queue.try_pop();
+
 			if (n != null) { 
 				if (n is Left) {
 					var ircmsg = (n as Left<Msg, Context>).left;
@@ -235,7 +262,6 @@ void main (string[] args) {
 					var recp_c = ircmsg.recipient();
 					if (recp_c is None) {
 						return true;
-						recp = "localhost";
 					} else {
 						recp = (recp_c as Some<string>).data;
 					}
@@ -267,7 +293,8 @@ void main (string[] args) {
 
 			return true;
 		});
-    window.show_all();
 
+    box_top.pack_start(pane_h, true, true, 0);
+    window.show_all();
     Gtk.main();
 }

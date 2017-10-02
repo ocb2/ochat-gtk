@@ -1,4 +1,6 @@
-// networking thread, communicates to main thread via ZMQ inproc pair socket
+// networking thread, communicates to main thread via ZMQ inproc pair socket and asychronous queue
+// the queue corresponds to messages recieved on the subscriber socket, while the inproc pair
+// corresponds to messages to be sent and recieved via the req socket
 void *zmq() {
     var sock_sub = ZMQ.Socket.create(ctx, ZMQ.SocketType.SUB);
  	var sock_req = ZMQ.Socket.create(ctx, ZMQ.SocketType.REQ);
@@ -50,7 +52,7 @@ void *zmq() {
 				} catch {
 					try {
 						queue.push(new Left<Msg, Context>(new Msg.from_json(root)));
-					} catch (JSON.Error.MALFORMED e) {
+					} catch (JSON.Error e) {
 						stderr.printf("Malformed JSON in message: %s\n", Json.to_string(root, true));
 						continue;
 					}
@@ -68,39 +70,5 @@ void *zmq() {
 			msg.recv(sock_req, 0);
 			msg.send(sock_pair, 0);
 		}
-	}
-}
-
-Context zmq_sync(ZMQ.Socket sock_req) {
-	size_t length;
-	var generator = new Json.Generator();
-	var root = new Json.Node(Json.NodeType.OBJECT);
-	var object = new Json.Object();
-	root.set_object(object);
-	generator.set_root(root);
-	object.set_string_member("type", "SYNC");
-	var s = generator.to_data(out length);
-	
-	var msg = ZMQ.Msg.with_data(s.data, free);
-	msg.send(sock_req, 0);
-	msg = ZMQ.Msg();
-	msg.recv(sock_req);
-	var parser = new Json.Parser();
-	try {
-		parser.load_from_data((string)msg.data, (ssize_t)msg.size());
-	} catch (GLib.Error e) {
-		stderr.printf("invalid json in zmq()\n");
-		exit(-1);
-	}
-	var ctxroot = parser.get_root();
-	try {
-		return new Context.from_json(ctxroot);
-	} catch {
-		stderr.printf("Malformed JSON in sync(): ");
-		stderr.write(msg.data, msg.size());
-		stderr.printf("\n");
-		exit(-1);
-		// return checker doesn't know about exit()
-		return (Context)null;
 	}
 }

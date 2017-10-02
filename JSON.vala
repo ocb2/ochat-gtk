@@ -19,6 +19,17 @@ namespace JSON {
 		}
 	}
 
+	int64 get_int(Json.Node node) throws Error {
+		string v = node.type_name();
+		stdout.printf("tyype name: %s\n", v);
+
+		if (v == "int") {
+			return node.get_int();
+		} else {
+			throw new Error.TYPE_MISMATCH(v);
+		}
+	}
+
 	string get_string(Json.Node node) throws Error {
 		string v = node.get_string();
 
@@ -45,5 +56,9 @@ namespace JSON {
 
 	string query_string(string query, Json.Node node) throws Error {
 		return get_string(query_singleton(query, node));
+	}
+
+	int64 query_int(string query, Json.Node node) throws Error {
+		return get_int(query_singleton(query, node));
 	}
 }
