@@ -48,11 +48,14 @@ public class Prefix : Object {
 }
 
 public class Msg : Object {
+	public string server;
+	
 	public Perhaps<Prefix> prefix;
 	public string command;
 	public string[] parameters;
 
-	public Msg(Perhaps<Prefix> prefix, string command, string[] parameters) {
+	public Msg(string server, Perhaps<Prefix> prefix, string command, string[] parameters) {
+		this.server = server;
 		this.prefix = prefix;
 		this.command = command;
 		this.parameters = parameters;
@@ -91,6 +94,7 @@ public class Msg : Object {
 		size_t length;
 		root.set_object(object);
 		generator.set_root(root);
+		object.set_string_member("id", this.server);
 		object.set_string_member("type", "IRC");
 		if (this.prefix is Some) {
 			object.set_object_member("prefix", (this.prefix as Some<Prefix>).data.to_json());

@@ -1,7 +1,7 @@
 // implementation of client protocol as defined in https://github.com/ocb2/ochat/blob/master/doc/protocol.md
 // TODO: there must be a better way to generate JSON than copy-pasting all this generator garbage
 namespace protocol {
-	Context sync(ZMQ.Socket sock) {
+	Context sync(ZMQ.Socket sock, string id) {
 		size_t length;
 		var generator = new Json.Generator();
 		var root = new Json.Node(Json.NodeType.OBJECT);
@@ -11,6 +11,7 @@ namespace protocol {
 		generator.set_root(root);
 
 		object.set_string_member("type", "SYNC");
+		object.set_string_member("id", id);
 
 		var s = generator.to_data(out length);
 		var msg = ZMQ.Msg.with_data(s.data, free);

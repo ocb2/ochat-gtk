@@ -41,9 +41,16 @@ public class Context : Object {
 			this.real = JSON.query_string("$.realname", node);
 			
 			foreach (Json.Node n in JSON.get_array(Json.Path.query("$.channels.*", node)).get_elements()) {
-				this.channels.append(JSON.get_array(n).get_string_element(0));
+				var n_ = JSON.get_array(n);
+				// no, I don't know why this is necessary either
+				// TODO: file bug report
+				if (n_.get_length() == 0) { break; }
+				stderr.printf("Malformed context:\n%s\n%s\n", Json.to_string(node, true), Json.to_string(n, true));
+				this.channels.append(JSON.get_string(n_.get_element(0)));
 			}
 		} catch {
+			stderr.printf("Malformed context:\n%s\n", Json.to_string(node, true));
+			exit(-1);
 		    throw new JSON.Error.MALFORMED("context");
 		}
 	}
@@ -52,12 +59,14 @@ public class Context : Object {
 // GTK objects
 public class IRCWindow : Gtk.Bin {
 	private unowned ZMQ.Socket socket;
+	public string server;
 	public string recipient;
 
 	public TextView view;
 	public Entry entry;
 
-	public IRCWindow(ZMQ.Socket sock, string recipient) {
+	public IRCWindow(ZMQ.Socket sock, string server, string recipient) {
+		this.server = server;
 		this.recipient = recipient;
 		this.socket = sock;
 
@@ -80,7 +89,8 @@ public class IRCWindow : Gtk.Bin {
 				if (t[0] == '/') {
 					// TODO: slightly more robust parsing logic...
 					if (t[1:5] == "join") {
-						var s = (new Msg(new None<Prefix>(),
+						var s = (new Msg(this.server,
+										 new None<Prefix>(),
 										 "JOIN",
                                          {t[6:t.length]})).serialize();
 						var msg = ZMQ.Msg.with_data(s.data, free);
@@ -91,7 +101,8 @@ public class IRCWindow : Gtk.Bin {
 					this.entry.set_text("");
 					return;
 				} else {
-					var s = (new Msg(new None<Prefix>(),
+					var s = (new Msg(this.server,
+									 new None<Prefix>(),
 									 "PRIVMSG",
 					{this.recipient,t})).serialize();
 					
@@ -224,19 +235,30 @@ void main (string[] args) {
 	pane_h.set_wide_handle(true);
 	pane_h.add(tree);
 
-	irc_ctx = protocol.sync(sock_pair);
+	irc_ctx = protocol.sync(sock_pair, "localhost");
+	var js = new Msg("localhost",
+					 new None<Prefix>(),
+					 "JOIN",
+					 {"#channel"}).serialize();
+	var msg = ZMQ.Msg.with_data(js.data, free);
+	msg.send(sock_pair, 0);
+	msg = ZMQ.Msg();
+	msg.recv(sock_pair);
 
 	store.append(out tree_root, null);
 	store.set(tree_root, 0, "localhost", -1);
 	foreach (string c in irc_ctx.channels) {
-		var win = new IRCWindow(sock_pair, c);
+		var win = new IRCWindow(sock_pair, "localhost", c);
+		if (c == null) { stderr.printf("seriously?\n, %u", irc_ctx.channels.length());  }
 		windows.insert(c, win);
 		store.append(out server, tree_root);
 		store.set(server, 0, c, -1);
 	}
 
 	tree.expand_all();
-	last = windows.lookup(irc_ctx.channels.first().data);
+	if (irc_ctx.channels.length() > 0) {
+		last = windows.lookup(irc_ctx.channels.first().data);
+	}
 	pane_h.add(last);
 	tree.cursor_changed.connect(() => {
 			Gtk.TreeModel model;
@@ -268,7 +290,7 @@ void main (string[] args) {
 					var v = windows.lookup(recp);
 
 					if (v == null) {
-						var ircwindow = new IRCWindow(sock_pair, recp);
+						var ircwindow = new IRCWindow(sock_pair, "localhost", recp);
 					
 						windows.insert(recp, ircwindow);
 						store.append(out server, tree_root);
@@ -282,7 +304,7 @@ void main (string[] args) {
 					foreach (string c in new_ctx.channels) {
 						if (irc_ctx.channels.find(c) == null) {
 						} else {
-							var next = new IRCWindow(sock_pair, c);
+							var next = new IRCWindow(sock_pair, "localhost", c);
 							windows.insert(c, next);
 							store.append(out server, tree_root);
 							store.set(server, 0, c, -1);
